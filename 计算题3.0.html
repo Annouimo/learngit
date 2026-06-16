@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>数学题生成器 · 重构版</title>
+    <!-- KaTeX 轻量公式渲染 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css" integrity="sha384-wcIxkf4k558AjM3Yz3BBFQUbk/zgIYC2R0QpeeYb+TwlBVMrlgLqwRjRtGZiK7ww" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]});"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f7fa;
+            padding: 12px;
+            color: #1e293b;
+            line-height: 1.5;
+        }
+        .app-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 28px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+            padding: 20px 18px;
+        }
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            background: #f1f5f9;
+            padding: 6px;
+            border-radius: 40px;
+        }
+        .tab-btn {
+            flex: 1;
+            border: none;
+            background: transparent;
+            padding: 12px 4px;
+            border-radius: 32px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #475569;
+            transition: 0.2s;
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            background: white;
+            color: #0f172a;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        .panel { display: none; }
+        .panel.active-panel { display: block; }
+
+        /* 控制栏 */
+        .action-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background: #e2e8f0;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 600;
+            flex: 1 1 0;
+            color: #1e293b;
+            transition: 0.15s;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        }
+        .btn-primary {
+            background: #0f172a;
+            color: white;
+        }
+        .btn-secondary {
+            background: #7b5dd6;
+            color: white;
+        }
+        .btn:active { opacity: 0.8; transform: scale(0.98); }
+        .last-refresh {
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 18px;
+            padding-left: 6px;
+        }
+        .problem-card {
+            background: #f8fafc;
+            border-radius: 24px;
+            padding: 18px 16px;
+            margin-bottom: 18px;
+            border: 1px solid #e9eef3;
+        }
+        .problem-title {
+            font-weight: 700;
+            color: #334155;
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+            letter-spacing: -0.2px;
+        }
+        .latex-block {
+            background: white;
+            padding: 14px 16px;
+            border-radius: 20px;
+            font-size: 1.2rem;
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+            margin: 6px 0;
+        }
+        .answer-block {
+            background: #e6f7e6;
+            border-left: 5px solid #2e7d32;
+            margin-top: 10px;
+            display: none; /* 默认隐藏，通过js切换 */
+        }
+        .answer-block.visible {
+            display: block;
+        }
+        .small-note {
+            color: #3b5e3b;
+            font-weight: 500;
+        }
+
+        /* 历史记录 */
+        .history-item {
+            background: #f1f4f9;
+            border-radius: 20px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #dde3ea;
+            cursor: pointer;
+            transition: 0.1s;
+        }
+        .history-item:hover { background: #e9eef4; }
+        .history-time {
+            font-weight: 600;
+            color: #0b3954;
+            margin-bottom: 6px;
+        }
+        .history-preview {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            font-size: 13px;
+            color: #2c3e50;
+        }
+        .history-detail {
+            background: #fefefe;
+            border-radius: 24px;
+            padding: 18px;
+            margin-top: 20px;
+            border: 2px solid #b9c9dd;
+            position: relative;
+        }
+        .close-detail {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            background: #e2e8f0;
+            border: none;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .close-detail:hover { background: #cbd5e1; }
+        .history-detail .latex-block { background: #f9fcff; }
+        .btn-clear {
+            background: #fee2e2;
+            color: #991b1b;
+            border: none;
+            border-radius: 40px;
+            padding: 12px 18px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+
+        /* 设置面板 */
+        .setting-group {
+            background: #f2f6fc;
+            border-radius: 28px;
+            padding: 18px;
+            margin-bottom: 24px;
+        }
+        .setting-title {
+            font-weight: 700;
+            color: #1e3a5f;
+            margin-bottom: 18px;
+            font-size: 1.2rem;
+        }
+        .slider-item {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 18px;
+        }
+        .slider-item label {
+            font-weight: 500;
+            color: #2c3e50;
+            margin-bottom: 6px;
+        }
+        input[type=range], input[type=number] {
+            padding: 10px;
+            border-radius: 30px;
+            border: 1px solid #cbd5e1;
+            background: white;
+            font-size: 16px;
+            width: 100%;
+        }
+        .param-desc {
+            font-size: 13px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+        .row2 {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .save-settings, .reset-settings {
+            background: #0f172a;
+            color: white;
+            padding: 16px;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: bold;
+            width: 100%;
+            border: none;
+            margin-top: 12px;
+            cursor: pointer;
+        }
+        .reset-settings {
+            background: #475569;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <!-- 选项卡 -->
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="problems">📋 题目</button>
+        <button class="tab-btn" data-tab="history">📅 历史</button>
+        <button class="tab-btn" data-tab="settings">⚙️ 设置</button>
+    </div>
+
+    <!-- 题目面板 -->
+    <div id="problemsPanel" class="panel active-panel">
+        <div class="action-bar">
+            <button class="btn btn-primary" id="refreshBtn">🔄 刷新题目</button>
+            <button class="btn btn-secondary" id="toggleAnswersBtn">👁️ 显示答案</button>
+        </div>
+        <div class="last-refresh" id="lastRefreshTime">最后刷新: 尚未生成</div>
+
+        <!-- 题目容器 -->
+        <div id="problemsContainer"></div>
+    </div>
+
+    <!-- 历史面板 -->
+    <div id="historyPanel" class="panel">
+        <button class="btn-clear" id="clearHistoryBtn">🗑️ 清空历史记录</button>
+        <div id="historyList"></div>
+        <div id="historyDetail" class="history-detail" style="display: none;">
+            <button class="close-detail" id="closeHistoryDetail">✕</button>
+            <h4 style="margin-bottom: 10px;">📌 完整题目</h4>
+            <div id="historyDetailContent"></div>
+        </div>
+    </div>
+
+    <!-- 设置面板 -->
+    <div id="settingsPanel" class="panel">
+        <div class="setting-group">
+            <div class="setting-title">🔢 小数运算</div>
+            <div class="slider-item">
+                <label>最小值 (整数部分): <input type="number" id="decimalMin" value="10" step="1" min="1" max="500"></label>
+                <div class="param-desc">参与运算的随机小数整数部分的最小值。</div>
+            </div>
+            <div class="slider-item">
+                <label>最大值 (整数部分): <input type="number" id="decimalMax" value="99" step="1" min="2" max="500"></label>
+                <div class="param-desc">参与运算的随机小数整数部分的最大值。</div>
+            </div>
+            <div class="slider-item">
+                <label>小数位数: <input type="number" id="decimalPlaces" value="1" min="0" max="3" step="1"></label>
+                <div class="param-desc">小数保留的位数，0 表示整数。</div>
+            </div>
+        </div>
+        <div class="setting-group">
+            <div class="setting-title">🧮 分数混合运算</div>
+            <div class="slider-item">
+                <label>分子范围 (绝对值): <input type="number" id="fracNumRange" value="30" min="5" max="100"></label>
+                <div class="param-desc">生成分数时分子的最大绝对值。</div>
+            </div>
+            <div class="slider-item">
+                <label>分母范围 (2~?): <input type="number" id="fracDenRange" value="10" min="3" max="30"></label>
+                <div class="param-desc">分母的最大值，分母至少为 2。</div>
+            </div>
+            <div class="slider-item">
+                <label>特殊乘数范围: <input type="number" id="fracSpecialRange" value="40" min="5" max="100"></label>
+                <div class="param-desc">用于构造特殊分数的乘数范围。</div>
+            </div>
+        </div>
+        <div class="setting-group">
+            <div class="setting-title">📈 圆锥曲线</div>
+            <div class="slider-item">
+                <label>a² 范围 (2~?): <input type="number" id="conicA" value="10" min="3" max="50"></label>
+                <div class="param-desc">椭圆方程中 a² 的最大值。</div>
+            </div>
+            <div class="slider-item">
+                <label>b 范围 (2~?): <input type="number" id="conicB" value="3" min="2" max="20"></label>
+                <div class="param-desc">椭圆方程中 b 的最大值。</div>
+            </div>
+            <div class="slider-item">
+                <label>m 范围 (±?): <input type="number" id="conicM" value="5" min="1" max="20"></label>
+                <div class="param-desc">直线斜率 k 的截距 m 的取值范围（对称，不含 0、±1）。</div>
+            </div>
+        </div>
+        <div class="setting-group">
+            <div class="setting-title">📐 三元方程组 (系数范围)</div>
+            <div class="slider-item">
+                <label>系数集A(解)范围: <input type="number" id="eqRangeA" value="25" min="5" max="100"></label>
+                <div class="param-desc">方程组的解 x, y, z 的系数范围。</div>
+            </div>
+            <div class="slider-item">
+                <label>系数集B范围: <input type="number" id="eqRangeB" value="15" min="5" max="100"></label>
+                <div class="param-desc">生成方程系数 B 的范围。</div>
+            </div>
+            <div class="slider-item">
+                <label>系数集C范围: <input type="number" id="eqRangeC" value="15" min="5" max="100"></label>
+                <div class="param-desc">生成方程系数 C 的范围。</div>
+            </div>
+            <div class="slider-item">
+                <label>系数集D范围: <input type="number" id="eqRangeD" value="20" min="5" max="100"></label>
+                <div class="param-desc">生成方程系数 D 的范围。</div>
+            </div>
+            <div class="slider-item">
+                <label>系数集E范围: <input type="number" id="eqRangeE" value="20" min="5" max="100"></label>
+                <div class="param-desc">生成方程系数 E 的范围。</div>
+            </div>
+        </div>
+        <button class="save-settings" id="saveSettingsBtn">💾 保存设置</button>
+        <button class="reset-settings" id="resetSettingsBtn">↩️ 重置默认设置</button>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // ---------- 工具函数 ----------
+        const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+        const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+        // 排除 -1,0,1 的随机整数生成器 (用于generateRandomList)
+        function randomExceptZeroOne(range) {
+            // range 正值, 返回范围 [-range .. -2] 及 [2 .. range] 中的随机数
+            const r = randomInt(1, 2 * (range - 1)); // 一共 2*(range-1) 个数
+            if (r <= range - 1) { // 落到正数区 2..range
+                return r + 1; // r从1开始 => 2..range
+            } else {
+                // 负数区 -range..-2
+                return -(r - (range - 1) + 1); // 映射
+            }
+        }
+
+        function generateRandomList(size, range) {
+            const result = [];
+            for (let i = 0; i < size; i++) {
+                result.push(randomExceptZeroOne(range));
+            }
+            return result;
+        }
+
+        // 符号格式化 (原kotlin symbol)
+        function symbol(value) {
+            return (value >= 0) ? `+ ${value}` : `- ${-value}`;
+        }
+
+        // ---------- 分数类 ----------
+        class Fraction {
+            constructor(numerator, denominator) {
+                if (denominator === 0) throw '分母不能为零';
+                this.numerator = numerator;
+                this.denominator = denominator;
+                this.reduce();
+            }
+
+            // 模式: 0任意分子,1真分数
+            static fromMode(mode, topRange, bottomRange) {
+                let denominator = randomInt(2, bottomRange); // 分母至少2
+                let numerator;
+                if (mode === 0) {
+                    numerator = randomInt(1, topRange);
+                } else { // mode=1 真分数
+                    numerator = randomInt(1, denominator - 1);
+                }
+                return new Fraction(numerator, denominator);
+            }
+
+            gcd(a, b) {
+                a = Math.abs(a); b = Math.abs(b);
+                while (b !== 0) [a, b] = [b, a % b];
+                return a;
+            }
+
+            lcm(a, b) { return (a === 0 || b === 0) ? 0 : (a * b) / this.gcd(a, b); }
+
+            reduce() {
+                const g = this.gcd(this.numerator, this.denominator);
+                this.numerator /= g;
+                this.denominator /= g;
+                if (this.denominator < 0) {
+                    this.numerator *= -1;
+                    this.denominator *= -1;
+                }
+            }
+
+            add(other) {
+                const common = this.lcm(this.denominator, other.denominator);
+                const num = this.numerator * (common / this.denominator) + other.numerator * (common / other.denominator);
+                return new Fraction(num, common);
+            }
+
+            subtract(other) {
+                const common = this.lcm(this.denominator, other.denominator);
+                const num = this.numerator * (common / this.denominator) - other.numerator * (common / other.denominator);
+                return new Fraction(num, common);
+            }
+
+            multiply(other) {
+                return new Fraction(this.numerator * other.numerator, this.denominator * other.denominator);
+            }
+
+            divide(other) {
+                return this.multiply(new Fraction(other.denominator, other.numerator));
+            }
+
+            toLatex() {
+                if (this.denominator === 1) return `${this.numerator}`;
+                if (this.numerator < 0) return `-\\frac{${-this.numerator}}{${this.denominator}}`;
+                return `\\frac{${this.numerator}}{${this.denominator}}`;
+            }
+
+            toPercentage() {
+                if (this.denominator === 1) return `${this.numerator}`;
+                if (this.numerator < 0) return `-${-this.numerator * 100 / this.denominator} \\%`;
+                return `${this.numerator * 100 / this.denominator} \\%`;
+            }
+        }
+
+        // 分数化简函数
+        function reduceFraction(numerator, denominator) {
+            return new Fraction(numerator, denominator).toLatex();
+        }
+
+        // ---------- 生成器 (依赖外部 settings) ----------
+        let currentSettings = {
+            decimalMin: 10, decimalMax: 99, decimalPlaces: 1,
+            fracNumRange: 30, fracDenRange: 10, fracSpecialRange: 40,
+            conicA: 10, conicB: 3, conicM: 5,
+            eqRangeA: 25, eqRangeB: 15, eqRangeC: 15, eqRangeD: 20, eqRangeE: 20
+        };
+
+        // 小数运算 (修改：乘除符号使用 \times, \div)
+        function generateDecimalProblem(settings) {
+            const min = settings.decimalMin, max = settings.decimalMax, places = settings.decimalPlaces;
+            const factor = Math.pow(10, places);
+            const num = [];
+            for (let i=0; i<8; i++) {
+                let val = randomInt(min*factor, max*factor) / factor;
+                num.push(val);
+            }
+            // 将 × 和 ÷ 替换为 LaTeX 命令
+            const expr = `$$(${num[0]} \\times ${num[1]} - ${num[2]}) \\times ${num[7]} \\times (${num[3]} + ${num[4]} \\times ${num[5]}) \\div ${num[6]}$$`;
+            const result = ((num[0] * num[1] - num[2]) * num[7] * (num[3] + num[4] * num[5])) / num[6];
+            return [expr, `$$ \\approx ${result.toFixed(2)} $$`];
+        }
+
+        // 分数混合运算
+        function fractionCalculationCreator(settings) {
+            const config0 = settings.fracNumRange, config1 = settings.fracDenRange, config2 = settings.fracSpecialRange;
+            const fractions = [];
+            for (let i=0; i<10; i++) fractions.push(Fraction.fromMode(0, config0, config1));
+            const fractionStrings = fractions.map(f => f.toLatex());
+
+            const randomParams = [];
+            for (let i=0; i<3; i++) randomParams.push(randomInt(2, config1));
+
+            const denominators = [2,4,5,8,10,20];
+            const d1 = pickRandom(denominators);
+            const n1 = randomInt(1, d1-1);
+            const special0 = new Fraction(n1, d1);
+            const d2 = pickRandom(denominators);
+            const m = randomInt(2, config2);
+            const special1 = new Fraction(m, d2);
+            const finalFraction = Fraction.fromMode(1, config0, config1); // 真分数
+
+            const partA = special0.add(fractions[1].multiply(fractions[2])).subtract(special1);
+            const partB = partA.multiply(fractions[3]);
+            const partC = new Fraction(randomParams[1], 1).add(fractions[4].multiply(fractions[5]));
+            const partD = partB.multiply(partC);
+            const partE = finalFraction.add(new Fraction(randomParams[2], 1));
+            const resultFraction = partD.divide(partE);
+
+            const question = `$$ \\left( ${special0.toPercentage()} + ${fractionStrings[1]} \\times ${fractionStrings[2]} - ${special1.toLatex()} \\right) \\times ${fractionStrings[3]} \\times \\left( ${randomParams[1]} + ${fractionStrings[4]} \\times ${fractionStrings[5]} \\right) \\div \\left( ${randomParams[2]} + ${finalFraction.toLatex()} \\right) $$`;
+            const answer = `$$ = ${resultFraction.toLatex()} $$`;
+            return [question, answer];
+        }
+
+        // 圆锥曲线
+        function conicCreator(settings) {
+            const aRange = settings.conicA, bRange = settings.conicB, mRange = settings.conicM;
+            const aSquared = randomInt(2, aRange);
+            const b = randomInt(2, bRange);
+            let m;
+            do {
+                m = randomInt(-mRange, mRange);
+            } while (m === 0 || Math.abs(m) === 1 || m*m === b*b);
+            const top = aSquared * (m*m - b*b);
+            const mMinusB = m - b;
+            const numerator = mMinusB * mMinusB * b * b;
+            const answer = reduceFraction(numerator, top);
+
+            // 注意：将普通文本与公式混合，使用 $ 包裹内联公式
+            const question = `已知方程组 \n$$ \\frac{x^2}{${aSquared}} + \\frac{y^2}{${b*b}} = 1 $$ \n$$ y = kx ${m >= 0 ? '+'+m : m} $$\n的两组解分别为 $(x_1,y_1), (x_2,y_2)$, 求 $$ \\frac{y_1 ${-b >=0 ? '+'+(-b) : -b}}{x_1} \\cdot \\frac{y_2 ${-b >=0 ? '+'+(-b) : -b}}{x_2} $$`;
+            return [question, `$$ = ${answer} $$`];
+        }
+
+        // 方程系数类
+        class EquationCoefficients {
+            constructor(coeff1, coeff2, coeff3, constant) {
+                this.coeff1 = coeff1; this.coeff2 = coeff2; this.coeff3 = coeff3; this.constant = constant;
+            }
+            get(index) {
+                if (index === 0) return this.coeff1;
+                if (index === 1) return this.coeff2;
+                if (index === 2) return this.coeff3;
+                return this.constant;
+            }
+        }
+
+        function equationCreator(settings, eqIdx1, eqIdx2, eqIdx3, coeffIdx1, coeffIdx2, coeffIdx3, var1, var2, var3) {
+            const ranges = [settings.eqRangeA, settings.eqRangeB, settings.eqRangeC, settings.eqRangeD, settings.eqRangeE];
+            const a = generateRandomList(4, ranges[0]);
+            const b = generateRandomList(7, ranges[1]);
+            const c = generateRandomList(5, ranges[2]);
+            const d = generateRandomList(4, ranges[3]);
+            const e = generateRandomList(13, ranges[4]);
+
+            const eq = [
+                new EquationCoefficients(b[4], b[5], b[6], b[4]*a[1] + b[5]*a[2] + b[6]*a[3]),
+                new EquationCoefficients(c[4]*b[4], c[4]*b[5] + c[1]*b[2], c[4]*b[6] + c[1]*b[3],
+                    c[4]*b[4]*a[1] + c[4]*b[5]*a[2] + c[4]*b[6]*a[3] + c[1]*b[2]*a[2] + c[1]*b[3]*a[3]),
+                new EquationCoefficients(c[3]*b[4], c[3]*b[5] + c[2]*b[2], c[3]*b[6] + b[1] + c[2]*b[3],
+                    c[3]*b[4]*a[1] + c[3]*b[5]*a[2] + c[3]*b[6]*a[3] + c[2]*b[2]*a[2] + b[1]*a[3] + c[2]*b[3]*a[3])
+            ];
+
+            function formatEq(equ, idxL) {
+                return `${equ.get(idxL[0])}${var1} ${symbol(equ.get(idxL[1]))}${var2} ${symbol(equ.get(idxL[2]))}${var3} = ${equ.constant}`;
+            }
+
+            const problem = `$$ ${d[1]}(${e[1]}${var1} ${symbol(e[2])}${var2}) ${symbol(e[3])}${var3} ${symbol(e[4])} = ${eq[eqIdx1].get(coeffIdx1) + d[1]*e[1]}${var1} ${symbol(eq[eqIdx1].get(coeffIdx2) + d[1]*e[2])}${var2} ${symbol(eq[eqIdx1].get(coeffIdx3) + e[3])}${var3} ${symbol(e[4] - eq[eqIdx1].constant)} $$\n` +
+                `$$ ${e[5]}${var1} ${symbol(d[2])}(${e[6]}${var3} ${symbol(e[7])}${var2} ${symbol(e[8])}) = ${eq[eqIdx2].get(coeffIdx1) + e[5]}${var1} ${symbol(eq[eqIdx2].get(coeffIdx2) + d[2]*e[7])}${var2} ${symbol(eq[eqIdx2].get(coeffIdx3) + d[2]*e[6])}${var3} ${symbol(d[2]*e[8] - eq[eqIdx2].constant)} $$\n` +
+                `$$ ${eq[eqIdx3].get(coeffIdx1) + d[3]*e[9]}${var1} ${symbol(eq[eqIdx3].get(coeffIdx2) + d[3]*e[10])}${var2} ${symbol(eq[eqIdx3].get(coeffIdx3) + e[11])}${var3} ${symbol(e[12] - eq[eqIdx3].constant)} = ${d[3]}(${e[9]}${var1} ${symbol(e[10])}${var2}) ${symbol(e[11])}${var3} ${symbol(e[12])} $$`;
+
+            const answer = `$$ ${var1}=${a[coeffIdx1+1]}, \\; ${var2}=${a[coeffIdx2+1]}, \\; ${var3}=${a[coeffIdx3+1]} $$`;
+            return [problem, answer];
+        }
+
+        // 生成整套题目
+        function generateAllProblems(settings) {
+            const [q1, a1] = generateDecimalProblem(settings);
+            const [q2, a2] = fractionCalculationCreator(settings);
+            const position = [...[0,1,2].sort(()=>Math.random()-0.5), ...[0,1,2].sort(()=>Math.random()-0.5)];
+            const unknown = pickRandom([['x','y','z'], ['p','q','r'], ['l','m','n'], ['a','b','c']]);
+            const [q3, a3] = equationCreator(settings, position[0], position[1], position[2], position[3], position[4], position[5], unknown[0], unknown[1], unknown[2]);
+            const [q4, a4] = conicCreator(settings);
+            return { questions: [q1, q2, q3, q4], answers: [a1, a2, a3, a4] };
+        }
+
+        // ---------- UI 状态 ----------
+        let currentProblems = null;
+        let showAnswers = false;
+        let history = JSON.parse(localStorage.getItem('math_history') || '[]'); // 最多20条
+
+        // 保存当前题目到 localStorage
+        function saveCurrentToStorage(problems, answers) {
+            const data = {
+                timestamp: Date.now(),
+                questions: problems,
+                answers: answers
+            };
+            localStorage.setItem('math_current', JSON.stringify(data));
+        }
+
+        // 从 localStorage 恢复当前题目
+        function loadCurrentFromStorage() {
+            const data = localStorage.getItem('math_current');
+            if (data) {
+                try {
+                    const { questions, answers } = JSON.parse(data);
+                    return { questions, answers };
+                } catch (e) {}
+            }
+            return null;
+        }
+
+        // 保存历史
+        function addHistory(problems, answers) {
+            const record = {
+                timestamp: Date.now(),
+                timeStr: new Date().toLocaleString('zh-CN', {hour12: false}),
+                questions: [...problems],
+                answers: [...answers]
+            };
+            history.unshift(record);
+            if (history.length > 20) history.pop();
+            localStorage.setItem('math_history', JSON.stringify(history));
+            renderHistoryPanel();
+        }
+
+        // 渲染题目区（带公式渲染，支持内联 $）
+        function renderProblems(problems, answers) {
+            const container = document.getElementById('problemsContainer');
+            let html = '';
+            const titles = ['小数运算', '分数混合运算', '解方程', '圆锥曲线'];
+            for (let i=0; i<4; i++) {
+                html += `<div class="problem-card"><div class="problem-title">第${i+1}题 ${titles[i]}</div>`;
+                html += `<div class="latex-block" id="q${i}">${problems[i]}</div>`;
+                html += `<div class="latex-block answer-block" id="a${i}" style="${showAnswers ? 'display:block' : 'display:none'}">${answers[i]}</div>`;
+                html += `</div>`;
+            }
+            container.innerHTML = html;
+            // 使用完整分隔符配置重新渲染
+            renderMathInElement(container, {
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false }
+                ]
+            });
+            document.getElementById('lastRefreshTime').innerText = `最后刷新: ${new Date().toLocaleString('zh-CN', {hour12: false})}`;
+        }
+
+        // 刷新
+        function refreshWithConfirm() {
+            if (!confirm('确定刷新题目吗？当前题目将保存至历史。')) return;
+            const settings = { ...currentSettings };
+            const { questions, answers } = generateAllProblems(settings);
+            currentProblems = { questions, answers };
+            renderProblems(questions, answers);
+            addHistory(questions, answers);
+            saveCurrentToStorage(questions, answers); // 保存到本地
+            // 隐藏答案状态重置
+            showAnswers = false;
+            document.getElementById('toggleAnswersBtn').innerText = '👁️ 显示答案';
+        }
+
+        // 切换答案
+        function toggleAnswers() {
+            showAnswers = !showAnswers;
+            document.getElementById('toggleAnswersBtn').innerText = showAnswers ? '👁️ 隐藏答案' : '👁️ 显示答案';
+            for (let i=0; i<4; i++) {
+                const aDiv = document.getElementById(`a${i}`);
+                if (aDiv) aDiv.style.display = showAnswers ? 'block' : 'none';
+            }
+        }
+
+        // 历史面板渲染
+        function renderHistoryPanel() {
+            const listDiv = document.getElementById('historyList');
+            if (!listDiv) return;
+            let html = '';
+            history.forEach((rec, idx) => {
+                html += `<div class="history-item" data-history-index="${idx}">`;
+                html += `<div class="history-time">🕒 ${rec.timeStr}</div>`;
+                html += `<div class="history-preview">📌 ${rec.questions.map((q,i)=>`题${i+1}`).join(' · ')}</div>`;
+                html += `</div>`;
+            });
+            if (history.length === 0) html = '<div style="padding:20px; text-align:center">暂无历史记录</div>';
+            listDiv.innerHTML = html;
+
+            // 绑定点击查看详情
+            document.querySelectorAll('.history-item').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    const idx = e.currentTarget.dataset.historyIndex;
+                    showHistoryDetail(history[idx]);
+                });
+            });
+        }
+
+        function showHistoryDetail(rec) {
+            const detailDiv = document.getElementById('historyDetail');
+            const contentDiv = document.getElementById('historyDetailContent');
+            let html = '';
+            for (let i=0;i<4;i++) {
+                html += `<div style="margin-bottom:16px;"><strong>第${i+1}题</strong>`;
+                html += `<div class="latex-block">${rec.questions[i]}</div>`;
+                html += `<div class="latex-block" style="background:#eaf4e4;">${rec.answers[i]}</div></div>`;
+            }
+            contentDiv.innerHTML = html;
+            detailDiv.style.display = 'block';
+            renderMathInElement(contentDiv, {
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false }
+                ]
+            });
+        }
+
+        // 清空历史
+        function clearHistory() {
+            if (confirm('永久删除所有历史记录？')) {
+                history = [];
+                localStorage.setItem('math_history', JSON.stringify(history));
+                renderHistoryPanel();
+                document.getElementById('historyDetail').style.display = 'none';
+            }
+        }
+
+        // 设置相关
+        function loadSettingsFromStorage() {
+            const saved = localStorage.getItem('math_settings');
+            if (saved) {
+                try {
+                    currentSettings = { ...currentSettings, ...JSON.parse(saved) };
+                } catch (e) {}
+            }
+            // 填充表单，并设置min/max属性已在HTML中定义
+            document.getElementById('decimalMin').value = currentSettings.decimalMin;
+            document.getElementById('decimalMax').value = currentSettings.decimalMax;
+            document.getElementById('decimalPlaces').value = currentSettings.decimalPlaces;
+            document.getElementById('fracNumRange').value = currentSettings.fracNumRange;
+            document.getElementById('fracDenRange').value = currentSettings.fracDenRange;
+            document.getElementById('fracSpecialRange').value = currentSettings.fracSpecialRange;
+            document.getElementById('conicA').value = currentSettings.conicA;
+            document.getElementById('conicB').value = currentSettings.conicB;
+            document.getElementById('conicM').value = currentSettings.conicM;
+            document.getElementById('eqRangeA').value = currentSettings.eqRangeA;
+            document.getElementById('eqRangeB').value = currentSettings.eqRangeB;
+            document.getElementById('eqRangeC').value = currentSettings.eqRangeC;
+            document.getElementById('eqRangeD').value = currentSettings.eqRangeD;
+            document.getElementById('eqRangeE').value = currentSettings.eqRangeE;
+        }
+
+        function saveSettings() {
+            // 读取并验证范围
+            const decimalMin = Math.max(1, Math.min(500, +document.getElementById('decimalMin').value));
+            const decimalMax = Math.max(decimalMin, Math.min(500, +document.getElementById('decimalMax').value));
+            const decimalPlaces = Math.max(0, Math.min(3, +document.getElementById('decimalPlaces').value));
+            const fracNumRange = Math.max(5, Math.min(100, +document.getElementById('fracNumRange').value));
+            const fracDenRange = Math.max(3, Math.min(30, +document.getElementById('fracDenRange').value));
+            const fracSpecialRange = Math.max(5, Math.min(100, +document.getElementById('fracSpecialRange').value));
+            const conicA = Math.max(3, Math.min(50, +document.getElementById('conicA').value));
+            const conicB = Math.max(2, Math.min(20, +document.getElementById('conicB').value));
+            const conicM = Math.max(1, Math.min(20, +document.getElementById('conicM').value));
+            const eqRangeA = Math.max(5, Math.min(100, +document.getElementById('eqRangeA').value));
+            const eqRangeB = Math.max(5, Math.min(100, +document.getElementById('eqRangeB').value));
+            const eqRangeC = Math.max(5, Math.min(100, +document.getElementById('eqRangeC').value));
+            const eqRangeD = Math.max(5, Math.min(100, +document.getElementById('eqRangeD').value));
+            const eqRangeE = Math.max(5, Math.min(100, +document.getElementById('eqRangeE').value));
+
+            // 更新输入框显示修正后的值
+            document.getElementById('decimalMin').value = decimalMin;
+            document.getElementById('decimalMax').value = decimalMax;
+            document.getElementById('decimalPlaces').value = decimalPlaces;
+            document.getElementById('fracNumRange').value = fracNumRange;
+            document.getElementById('fracDenRange').value = fracDenRange;
+            document.getElementById('fracSpecialRange').value = fracSpecialRange;
+            document.getElementById('conicA').value = conicA;
+            document.getElementById('conicB').value = conicB;
+            document.getElementById('conicM').value = conicM;
+            document.getElementById('eqRangeA').value = eqRangeA;
+            document.getElementById('eqRangeB').value = eqRangeB;
+            document.getElementById('eqRangeC').value = eqRangeC;
+            document.getElementById('eqRangeD').value = eqRangeD;
+            document.getElementById('eqRangeE').value = eqRangeE;
+
+            currentSettings = {
+                decimalMin, decimalMax, decimalPlaces,
+                fracNumRange, fracDenRange, fracSpecialRange,
+                conicA, conicB, conicM,
+                eqRangeA, eqRangeB, eqRangeC, eqRangeD, eqRangeE
+            };
+            localStorage.setItem('math_settings', JSON.stringify(currentSettings));
+            alert('设置已保存，下次刷新题目生效');
+        }
+
+        function resetSettings() {
+            // 默认值
+            currentSettings = {
+                decimalMin: 10, decimalMax: 99, decimalPlaces: 1,
+                fracNumRange: 30, fracDenRange: 10, fracSpecialRange: 40,
+                conicA: 10, conicB: 3, conicM: 5,
+                eqRangeA: 25, eqRangeB: 15, eqRangeC: 15, eqRangeD: 20, eqRangeE: 20
+            };
+            // 更新表单
+            document.getElementById('decimalMin').value = currentSettings.decimalMin;
+            document.getElementById('decimalMax').value = currentSettings.decimalMax;
+            document.getElementById('decimalPlaces').value = currentSettings.decimalPlaces;
+            document.getElementById('fracNumRange').value = currentSettings.fracNumRange;
+            document.getElementById('fracDenRange').value = currentSettings.fracDenRange;
+            document.getElementById('fracSpecialRange').value = currentSettings.fracSpecialRange;
+            document.getElementById('conicA').value = currentSettings.conicA;
+            document.getElementById('conicB').value = currentSettings.conicB;
+            document.getElementById('conicM').value = currentSettings.conicM;
+            document.getElementById('eqRangeA').value = currentSettings.eqRangeA;
+            document.getElementById('eqRangeB').value = currentSettings.eqRangeB;
+            document.getElementById('eqRangeC').value = currentSettings.eqRangeC;
+            document.getElementById('eqRangeD').value = currentSettings.eqRangeD;
+            document.getElementById('eqRangeE').value = currentSettings.eqRangeE;
+            // 不自动保存，等待用户点击保存按钮
+        }
+
+        // 初始化
+        window.addEventListener('load', () => {
+            loadSettingsFromStorage();
+            renderHistoryPanel();
+
+            // 尝试从本地恢复当前题目
+            const savedCurrent = loadCurrentFromStorage();
+            if (savedCurrent) {
+                currentProblems = savedCurrent;
+                renderProblems(savedCurrent.questions, savedCurrent.answers);
+                // 更新刷新时间显示（使用存储的时间戳？这里简单显示当前时间）
+                document.getElementById('lastRefreshTime').innerText = `最后刷新: ${new Date().toLocaleString('zh-CN', {hour12: false})} (已恢复上次题目)`;
+            } else {
+                // 默认生成一次题目
+                const { questions, answers } = generateAllProblems(currentSettings);
+                currentProblems = { questions, answers };
+                renderProblems(questions, answers);
+                addHistory(questions, answers); // 自动保存第一条到历史
+                saveCurrentToStorage(questions, answers);
+            }
+
+            showAnswers = false;
+
+            // 选项卡
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active-panel'));
+                    const tab = e.target.dataset.tab;
+                    document.getElementById(tab + 'Panel').classList.add('active-panel');
+                });
+            });
+
+            // 刷新
+            document.getElementById('refreshBtn').addEventListener('click', refreshWithConfirm);
+            document.getElementById('toggleAnswersBtn').addEventListener('click', toggleAnswers);
+            document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
+            document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+            document.getElementById('resetSettingsBtn').addEventListener('click', resetSettings);
+            document.getElementById('closeHistoryDetail').addEventListener('click', () => {
+                document.getElementById('historyDetail').style.display = 'none';
+            });
+        });
+    })();
+</script>
+</body>
+</html>
